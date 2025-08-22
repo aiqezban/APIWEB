@@ -3,4 +3,4 @@
 
 [Հղում](https://url.am)
 
-![PNG](https://url.png "IMG NAME")
+![PNG]([https://url.png](https://raw.githubusercontent.com/aiqezban/APIWEB/main/index.html) "IMG NAME")
