@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="hy">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>APIWEB - API/Webhook Scanner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Fira Sans', sans-serif;
+            scroll-behavior: smooth;
+        }
+        .result-box {
+            min-height: 200px;
+        }
+        .loader {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .copy-btn::after {
+            content: 'Պատճենել';
+        }
+        .copy-btn.copied::after {
+            content: 'Պատճենված է';
+        }
+        #progressBar {
+            transition: width 0.3s ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white">
+
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl md:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">APIWEB - API/Webhook Scanner</h1>
+            <p class="text-gray-400 mt-2">Մուտքագրեք կայքի հասցեն՝ հնարավոր API և Webhook հղումները գտնելու համար</p>
+        </header>
+
+        <main>
+            <!-- URL Input Section -->
+            <div class="bg-gray-800 p-6 rounded-xl shadow-lg mb-6">
+                <div class="flex flex-col sm:flex-row gap-4">
+                    <input type="text" id="urlInput" placeholder="օրինակ՝ example.com" class="flex-grow bg-gray-700 text-white border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                    <button id="scanBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition duration-300 ease-in-out transform hover:scale-105">
+                        Սկանավորել
+                    </button>
+                </div>
+                <div id="statusMessage" class="mt-4 text-center font-medium"></div>
+                <!-- Progress Bar -->
+                <div id="progressBarContainer" class="hidden w-full bg-gray-700 rounded-full h-2.5 mt-3">
+                    <div id="progressBar" class="bg-blue-500 h-2.5 rounded-full" style="width: 0%"></div>
+                </div>
+                <div id="progressText" class="hidden text-center text-sm text-gray-400 mt-1"></div>
+            </div>
+            
+            <!-- Error Message -->
+            <div id="errorMessage" class="hidden bg-red-900/50 border border-red-700 text-red-300 px-4 py-3 rounded-lg text-center" role="alert">
+            </div>
+
+            <!-- Results Section -->
+            <div id="resultsSection" class="hidden">
+                <!-- Advertisement Banner -->
+                <div class="bg-gray-800 p-2 rounded-xl shadow-lg mb-6">
+                    <img src="https://www.hayagitaran.am/wp-content/uploads/2016/04/Govazd.gif" alt="Գովազդ" class="w-full h-auto rounded-lg" onerror="this.onerror=null;this.src='https://www.hayagitaran.am/wp-content/uploads/2016/04/Govazd.gif';">
+                </div>
+
+                <!-- API and Webhook Links -->
+                <div class="grid md:grid-cols-2 gap-6 mb-6">
+                    <!-- API Links Panel -->
+                    <div class="bg-gray-800 p-6 rounded-xl shadow-lg">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-xl font-bold text-blue-400">API Հղումներ</h3>
+                            <button id="copyApiBtn" class="copy-btn bg-gray-700 hover:bg-gray-600 text-sm font-semibold py-2 px-4 rounded-lg transition duration-300 hidden"></button>
+                        </div>
+                        <div id="apiLinks" class="result-box bg-gray-900/50 p-4 rounded-lg overflow-y-auto max-h-64 break-words">
+                            <p class="text-gray-500">Այստեղ կցուցադրվեն հայտնաբերված API հղումները...</p>
+                        </div>
+                    </div>
+
+                    <!-- Webhook Links Panel -->
+                    <div class="bg-gray-800 p-6 rounded-xl shadow-lg">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-xl font-bold text-purple-400">Webhook Հղումներ</h3>
+                            <button id="copyWebhookBtn" class="copy-btn bg-gray-700 hover:bg-gray-600 text-sm font-semibold py-2 px-4 rounded-lg transition duration-300 hidden"></button>
+                        </div>
+                        <div id="webhookLinks" class="result-box bg-gray-900/50 p-4 rounded-lg overflow-y-auto max-h-64 break-words">
+                            <p class="text-gray-500">Այստեղ կցուցադրվեն հայտնաբերված Webhook հղումները...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Download Button -->
+                <div class="text-center">
+                    <button id="downloadBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-lg transition duration-300 ease-in-out transform hover:scale-105 hidden">
+                        Ներբեռնել Արդյունքները
+                    </button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // --- Configuration ---
+        const JINA_READER_API = 'https://r.jina.ai/';
+        const API_PROBE_PATHS = ['/api', '/api/v1', '/api/v2', '/v3', '/rest', '/graphql', '/rpc', '/webapi', '/api/docs', '/swagger.json', '/openapi.json'];
+        const WEBHOOK_PROBE_PATHS = ['/webhook', '/webhooks', '/hooks', '/callback'];
+        
+        // --- DOM Elements ---
+        const urlInput = document.getElementById('urlInput');
+        const scanBtn = document.getElementById('scanBtn');
+        const statusMessage = document.getElementById('statusMessage');
+        const errorMessage = document.getElementById('errorMessage');
+        const resultsSection = document.getElementById('resultsSection');
+        const apiLinks = document.getElementById('apiLinks');
+        const webhookLinks = document.getElementById('webhookLinks');
+        const copyApiBtn = document.getElementById('copyApiBtn');
+        const copyWebhookBtn = document.getElementById('copyWebhookBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const progressBarContainer = document.getElementById('progressBarContainer');
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
+
+        // --- State ---
+        let foundApiLinks = new Set();
+        let foundWebhookLinks = new Set();
+        let progressInterval = null;
+
+        // --- Event Listeners ---
+        scanBtn.addEventListener('click', handleScan);
+        urlInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') handleScan();
+        });
+        copyApiBtn.addEventListener('click', () => copyToClipboard(Array.from(foundApiLinks).join('\n'), copyApiBtn));
+        copyWebhookBtn.addEventListener('click', () => copyToClipboard(Array.from(foundWebhookLinks).join('\n'), copyWebhookBtn));
+        downloadBtn.addEventListener('click', downloadResults);
+
+        /**
+         * Main function to orchestrate the scan.
+         */
+        async function handleScan() {
+            let url = urlInput.value.trim();
+            if (!url) {
+                showError("Խնդրում ենք մուտքագրել կայքի URL հասցեն։");
+                return;
+            }
+
+            resetUI();
+            startProgressSimulation(0, 'Սկսվում է սկանավորումը...');
+
+            if (!/^https?:\/\//i.test(url)) {
+                url = 'https://' + url;
+            }
+
+            try {
+                // Step 1: Fetch and parse the main page
+                updateProgressBar(10, 'Կայքի հիմնական էջի ստացում...');
+                const response = await fetch(`${JINA_READER_API}${url}`);
+                checkSecurity(url);
+
+                if (!response.ok) {
+                    throw new Error(`Չհաջողվեց ստանալ տվյալներ: Սերվերը պատասխանեց ${response.status} սխալով`);
+                }
+
+                const html = await response.text();
+                const baseUrl = new URL(url).origin;
+                
+                updateProgressBar(30, 'Էջի բովանդակության վերլուծություն...');
+                parseContentForLinks(html, baseUrl);
+                
+                // Step 2: Probe common endpoints
+                await probeEndpoints(baseUrl);
+
+                updateResultsUI();
+                completeProgressSimulation();
+
+            } catch (error) {
+                console.error('Scan Error:', error);
+                showError(`Սկանավորման սխալ: ${error.message}. Համոզվեք, որ հասցեն ճիշտ է և կայքը հասանելի է։`);
+                stopProgressSimulation();
+            }
+        }
+        
+        /**
+         * Parses HTML content to find links within tags.
+         */
+        function parseContentForLinks(html, baseUrl) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const links = doc.querySelectorAll('a[href]');
+            
+            links.forEach(link => {
+                let href = link.getAttribute('href');
+                if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:')) return;
+
+                try {
+                    href = new URL(href, baseUrl).href;
+                } catch (_) { return; }
+
+                if (isApiLink(href)) foundApiLinks.add(href);
+                if (isWebhookLink(href)) foundWebhookLinks.add(href);
+            });
+        }
+        
+        /**
+         * Probes a list of common API and Webhook endpoints.
+         */
+        async function probeEndpoints(baseUrl) {
+            const allPaths = [...API_PROBE_PATHS, ...WEBHOOK_PROBE_PATHS];
+            const totalProbes = allPaths.length;
+            let completedProbes = 0;
+
+            const promises = allPaths.map(async (path) => {
+                const probeUrl = `${baseUrl}${path}`;
+                try {
+                    const response = await fetch(`${JINA_READER_API}${probeUrl}`, { method: 'HEAD' });
+                    if (response.ok) {
+                        if (API_PROBE_PATHS.includes(path)) {
+                            foundApiLinks.add(probeUrl);
+                        } else if (WEBHOOK_PROBE_PATHS.includes(path)) {
+                            foundWebhookLinks.add(probeUrl);
+                        }
+                    }
+                } catch (err) {
+                    // Ignore fetch errors for non-existent endpoints
+                } finally {
+                    completedProbes++;
+                    const progress = 30 + Math.round((completedProbes / totalProbes) * 65);
+                    updateProgressBar(progress, `Ստուգվում են հնարավոր հղումները (${completedProbes}/${totalProbes})...`);
+                }
+            });
+
+            await Promise.allSettled(promises);
+        }
+
+        function isApiLink(url) {
+            const lowerUrl = url.toLowerCase();
+            return API_PROBE_PATHS.some(keyword => lowerUrl.includes(keyword));
+        }
+
+        function isWebhookLink(url) {
+            const lowerUrl = url.toLowerCase();
+            return WEBHOOK_PROBE_PATHS.some(keyword => lowerUrl.includes(keyword));
+        }
+
+        /**
+         * Updates the result containers in the UI.
+         */
+        function updateResultsUI() {
+            const apiArray = Array.from(foundApiLinks);
+            if (apiArray.length > 0) {
+                apiLinks.innerHTML = apiArray.map(link => `<div class="p-2 hover:bg-gray-700 rounded-md"><a href="${link}" target="_blank" rel="noopener noreferrer" class="text-blue-300 hover:underline">${link}</a></div>`).join('');
+                copyApiBtn.classList.remove('hidden');
+            } else {
+                apiLinks.innerHTML = '<p class="text-gray-500">API հղումներ չեն հայտնաբերվել։</p>';
+            }
+
+            const webhookArray = Array.from(foundWebhookLinks);
+            if (webhookArray.length > 0) {
+                webhookLinks.innerHTML = webhookArray.map(link => `<div class="p-2 hover:bg-gray-700 rounded-md"><a href="${link}" target="_blank" rel="noopener noreferrer" class="text-purple-300 hover:underline">${link}</a></div>`).join('');
+                copyWebhookBtn.classList.remove('hidden');
+            } else {
+                webhookLinks.innerHTML = '<p class="text-gray-500">Webhook հղումներ չեն հայտնաբերվել։</p>';
+            }
+
+            resultsSection.classList.remove('hidden');
+            if (apiArray.length > 0 || webhookArray.length > 0) {
+                downloadBtn.classList.remove('hidden');
+            }
+        }
+        
+        function resetUI() {
+            errorMessage.classList.add('hidden');
+            resultsSection.classList.add('hidden');
+            downloadBtn.classList.add('hidden');
+            statusMessage.textContent = '';
+            apiLinks.innerHTML = '<p class="text-gray-500">Այստեղ կցուցադրվեն հայտնաբերված API հղումները...</p>';
+            webhookLinks.innerHTML = '<p class="text-gray-500">Այստեղ կցուցադրվեն հայտնաբերված Webhook հղումները...</p>';
+            copyApiBtn.classList.add('hidden');
+            copyWebhookBtn.classList.add('hidden');
+            foundApiLinks.clear();
+            foundWebhookLinks.clear();
+            stopProgressSimulation();
+            updateProgressBar(0, ' ');
+        }
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.classList.remove('hidden');
+        }
+
+        function checkSecurity(url) {
+            statusMessage.innerHTML = url.startsWith('https://')
+                ? `<span class="text-green-400">● Անվտանգ է (HTTPS)</span>`
+                : `<span class="text-red-400">● Անվտանգ չէ (HTTP)</span>`;
+        }
+
+        function copyToClipboard(text, button) {
+            if (!text) return;
+            navigator.clipboard.writeText(text).then(() => {
+                button.classList.add('copied');
+                setTimeout(() => { button.classList.remove('copied'); }, 2000);
+            }).catch(err => console.error('Could not copy text: ', err));
+        }
+
+        function downloadResults() {
+            let fileContent = '';
+            const webhookArray = Array.from(foundWebhookLinks);
+            const apiArray = Array.from(foundApiLinks);
+
+            if (webhookArray.length > 0) {
+                fileContent += 'Webhook հղումներ\n';
+                webhookArray.forEach(link => { fileContent += `- ${link}\n`; });
+                fileContent += '- - - - - - - - \n';
+            }
+            if (apiArray.length > 0) {
+                fileContent += 'API Հղումներ\n';
+                apiArray.forEach(link => { fileContent += `- ${link}\n`; });
+            }
+
+            const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            let filename = "Results.txt";
+            if (apiArray.length > 0 && webhookArray.length === 0) filename = "API.txt";
+            else if (apiArray.length === 0 && webhookArray.length > 0) filename = "Webhook.txt";
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // --- Progress Bar Functions ---
+        function updateProgressBar(percentage, text = `Սկանավորում... ${percentage}%`) {
+            progressBar.style.width = `${percentage}%`;
+            progressText.textContent = text;
+        }
+
+        function startProgressSimulation(startPercent, text) {
+            progressBarContainer.classList.remove('hidden');
+            progressText.classList.remove('hidden');
+            updateProgressBar(startPercent, text);
+        }
+
+        function completeProgressSimulation() {
+            updateProgressBar(100, 'Ավարտված է 100%');
+            setTimeout(() => {
+                progressBarContainer.classList.add('hidden');
+                progressText.classList.add('hidden');
+            }, 1000);
+        }
+
+        function stopProgressSimulation() {
+            progressBarContainer.classList.add('hidden');
+            progressText.classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
